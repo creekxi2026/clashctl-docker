@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+umask 077
+export CLASHCTL_HOME=/opt/clashctl
+source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
+# Keep an alias of upstream conversion before wrapping its working directory/lock.
+eval "$(declare -f _download_convert_config | sed '1s/_download_convert_config/_download_convert_config_upstream/')"
+_download_convert_config() { (flock -w 60 8 || exit 1; _container_convert "$@") 8>/data/converter.lock; }
+case "${1:-help}" in
+    on) service_is_active || service_start ;;
+    off) service_stop ;;
+    status) service_status ;;
+    upgrade|tun|ui|secret)
+        printf '%s
+' 'This container supports sub/node/on/off/status/log/mixin. Upgrade by pulling a new image; TUN and dashboard are not included.' >&2
+        exit 2 ;;
+    *) clashctl "$@" ;;
+esac

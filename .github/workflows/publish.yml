@@ -1,0 +1,120 @@
+name: Build, exercise both architectures, publish GHCR
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish tested images to GHCR
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: clashctl-docker-publish
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Static checks
+        run: |
+          for script in container/entrypoint container/clashctl container/update-subscriptions container/zz-container.sh; do bash -n "$script"; done
+          python3 -m py_compile tests/*.py
+          docker compose --env-file env.example config --quiet
+      - name: Build
+        run: |
+          docker buildx build --platform "linux/$ARCH" --load --provenance=false --sbom=false \
+            --cache-from "type=gha,scope=$ARCH" --cache-to "type=gha,scope=$ARCH,mode=max" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" -t clashctl:test .
+      - name: Real container integration tests
+        env:
+          IMAGE: clashctl:test
+        run: python3 tests/integration.py
+      - uses: docker/login-action@v4
+        if: ${{ inputs.publish == true }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push exactly the tested config by digest
+        if: ${{ inputs.publish == true }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker buildx build --platform "linux/$ARCH" --provenance=false --sbom=false \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --metadata-file "$RUNNER_TEMP/push.json" \
+            --output "type=image,name=$image,push-by-digest=true,name-canonical=true,push=true" .
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          temp = Path(os.environ['RUNNER_TEMP'])
+          meta = json.loads((temp / 'push.json').read_text())
+          tested = subprocess.check_output(['docker', 'image', 'inspect', 'clashctl:test', '--format', '{{.Id}}'], text=True).strip()
+          assert meta['containerimage.config.digest'] == tested, 'Pushed image differs from tested image'
+          digest = meta['containerimage.digest']
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', digest)
+          folder = temp / 'digests'
+          folder.mkdir()
+          (folder / os.environ['ARCH']).write_text(digest)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ inputs.publish == true }}
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    if: ${{ inputs.publish == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish index and read back both exact manifests
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          amd64=$(cat digests/amd64)
+          arm64=$(cat digests/arm64)
+          docker buildx imagetools create -t "$image:latest" "$image@$amd64" "$image@$arm64"
+          docker buildx imagetools inspect "$image:latest" --raw > index.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          index = json.loads(Path('index.json').read_text())
+          entries = {(m['platform']['os'],m['platform']['architecture']):m['digest'] for m in index['manifests']}
+          assert len(index['manifests']) == 2
+          assert entries == {('linux',arch):Path('digests',arch).read_text().strip() for arch in ('amd64','arm64')}
+          print('Verified latest references both tested architecture manifests:', entries)
+          PY
+          docker buildx imagetools inspect "$image:latest" >> "$GITHUB_STEP_SUMMARY"

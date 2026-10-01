@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# No set -e/-u: upstream functions legitimately return false in intermediate checks.
+umask 077
+export CLASHCTL_HOME=/opt/clashctl
+fail() { printf '%s
+' "$1" >&2; exit 1; }
+[ -w /data ] || fail '/data must be writable by UID 1000 (named volumes work automatically).'
+[[ "${SUB_UPDATE_INTERVAL:-86400}" =~ ^[0-9]+$ ]] || fail 'SUB_UPDATE_INTERVAL must be a non-negative number of seconds.'
+[ -z "${SUB_URL:-}" ] || [ -z "${SUB_URL_FILE:-}" ] || fail 'Use only SUB_URL or SUB_URL_FILE.'
+[ -e /data/config.yaml ] || cp /etc/clashctl/default.yaml /data/config.yaml || exit 1
+[ -e /data/mixin.yaml ] || cp /etc/clashctl/mixin.yaml /data/mixin.yaml || exit 1
+[ -e /data/profiles.yaml ] || printf 'profiles: []
+use: ""
+' > /data/profiles.yaml || exit 1
+mkdir -p /data/profiles /data/subconverter || exit 1
+for asset in geoip.metadb geoip.dat geosite.dat; do
+    [ -e "/data/$asset" ] || cp "/etc/clashctl/$asset" "/data/$asset" || exit 1
+done
+# Refresh shipped conversion binary/assets each start; keep custom prefs and logs.
+cp -R /opt/subconverter-template/. /data/subconverter/ || exit 1
+[ -e /data/subconverter/pref.yml ] || cp /data/subconverter/pref.example.yml /data/subconverter/pref.yml || exit 1
+/opt/clashctl/bin/yq -i '.server.listen = "127.0.0.1" | .server.port = 25500 | .rulesets.enabled = false | .emojis.add_emoji = false' /data/subconverter/pref.yml || exit 1
+source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
+# Bootstrap before supervisord starts; sub --use can merge without starting a daemon.
+service_start() { return 0; }
+service_stop() { return 0; }
+service_is_active() { return 1; }
+eval "$(declare -f _download_convert_config | sed '1s/_download_convert_config/_download_convert_config_upstream/')"
+_download_convert_config() { _container_convert "$@"; }
+if [ -n "${SUB_URL_FILE:-}" ]; then
+    [ -r "$SUB_URL_FILE" ] || fail 'SUB_URL_FILE is not readable.'
+    SUB_URL=$(<"$SUB_URL_FILE")
+    [ -n "$SUB_URL" ] || fail 'SUB_URL_FILE is empty.'
+fi
+if [ -n "${SUB_URL:-}" ] && [ -z "$(_sub_current)" ]; then
+    clashsub add --name main --use "$SUB_URL" > /data/bootstrap.log 2>&1 || fail 'Initial subscription import failed. Details in /data/bootstrap.log (may contain credentials).'
+fi
+unset SUB_URL SUB_URL_FILE
+_merge_config > /data/config-check.log 2>&1 || fail 'Config validation failed; inspect /data/config-check.log.'
+exec /usr/bin/supervisord -c /etc/supervisord.conf

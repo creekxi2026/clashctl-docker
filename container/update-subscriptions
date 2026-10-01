@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+umask 077
+interval=${SUB_UPDATE_INTERVAL:-86400}
+[[ "$interval" =~ ^[0-9]+$ ]] || exit 2
+[ "$interval" -gt 0 ] || exit 0
+while sleep "$interval"; do
+    # No active subscriptions is a normal fresh-container state.
+    if /opt/clashctl/bin/yq -e '.profiles | length > 0' /data/profiles.yaml >/dev/null 2>&1; then
+        /usr/local/bin/clashctl sub update --all || printf '%s
+' 'Subscription update failed; previous valid config retained when validation fails.' >&2
+    fi
+done
