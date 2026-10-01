@@ -109,6 +109,8 @@ try:
     assert int(value(".proxies | length", converted)) > 0
     check("bundled subconverter converts a Base64 Shadowsocks fixture")
     cli("off")
+    scheduled = docker("exec", NAME, "timeout", "3", "env", "SUB_UPDATE_INTERVAL=1", "/usr/local/bin/update-subscriptions", ok=False)
+    assert scheduled.returncode == 124, scheduled.stdout
     assert cli("status", ok=False).returncode != 0
     assert docker("inspect", "-f", "{{.State.Running}}", NAME).stdout.strip() == "true"
     cli("on")
