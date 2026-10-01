@@ -83,6 +83,7 @@ try:
     assert docker("exec", NAME, "id", "-u").stdout.strip() == "1000"
     assert value(".use") == "main"
     assert value(".profiles | length") == "1"
+    assert "No such file or directory" not in docker("exec", NAME, "cat", "/data/bootstrap.log").stdout
     check("non-root startup, initial URL import and supervisor readiness")
     proxy()
     proxy("socks")
@@ -145,6 +146,6 @@ except Exception:
         print(docker("exec", NAME, "tail", "-n", "60", "/data/" + file, ok=False).stdout)
     raise
 finally:
-    docker("rm", "-f", NAME, FIXTURE, ok=False)
+    docker("rm", "-fv", NAME, FIXTURE, ok=False)
     docker("volume", "rm", VOLUME, ok=False)
     docker("network", "rm", NETWORK, ok=False)

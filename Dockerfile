@@ -42,6 +42,8 @@ for option in ('--insecure', '--no-check-certificate'):
     assert s.count(option) == 1, 'Upstream drift: review TLS patch'
     s = '\n'.join(line for line in s.split('\n') if option not in line)
 p.write_text(s)
+for script in Path('/opt/clashctl/scripts').rglob('*.sh'):
+    script.write_text(script.read_text().replace('/usr/bin/rm', '/bin/rm'))
 PY
 COPY container/zz-container.sh /opt/clashctl/scripts/lib/zz-container.sh
 COPY container/default.yaml container/mixin.yaml /etc/clashctl/
