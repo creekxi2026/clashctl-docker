@@ -41,6 +41,17 @@ s = p.read_text()
 for option in ('--insecure', '--no-check-certificate'):
     assert s.count(option) == 1, 'Upstream drift: review TLS patch'
     s = '\n'.join(line for line in s.split('\n') if option not in line)
+# The upstream readiness loop returns its last false timeout check after a
+# successful delayed startup; make readiness success explicit.
+old = '    done\n}\n\n_stop_convert()'
+assert s.count(old) == 1, 'Upstream drift: review converter return fix'
+s = s.replace(old, '    done\n    return 0\n}\n\n_stop_convert()')
+p.write_text(s)
+p = Path('/opt/clashctl/scripts/cmd/sub.sh')
+s = p.read_text()
+old = '    [ "$use_after_add" = true ] && _sub_use_locked "$name"\n}'
+assert s.count(old) == 1, 'Upstream drift: review subscription add return fix'
+s = s.replace(old, '    if [ "$use_after_add" = true ]; then _sub_use_locked "$name"; else return 0; fi\n}')
 p.write_text(s)
 for script in Path('/opt/clashctl/scripts').rglob('*.sh'):
     script.write_text(script.read_text().replace('/usr/bin/rm', '/bin/rm'))
