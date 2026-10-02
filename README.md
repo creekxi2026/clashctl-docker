@@ -105,8 +105,8 @@ IMAGE=clashctl:test python3 tests/integration.py
 
 ## Upstream update notifications
 
-[Check upstream updates](.github/workflows/upstream.yml) runs daily at 09:23
-Asia/Shanghai (GitHub may delay scheduled runs). It checks the default-branch
+[Check upstream updates](.github/workflows/upstream.yml) runs on the first day
+of each month at 09:23 Asia/Shanghai (GitHub may delay scheduled runs). It checks the default-branch
 commit of clash-for-linux-install and the latest stable mihomo release against
 this repository's Dockerfile pins. Alpha releases are excluded.
 
