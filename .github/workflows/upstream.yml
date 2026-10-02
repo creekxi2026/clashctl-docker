@@ -1,0 +1,45 @@
+name: Check upstream updates
+on:
+  schedule:
+    # 09:23 Asia/Shanghai; GitHub scheduled runs can be delayed.
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+    inputs:
+      test_notification:
+        description: Create a clearly marked, one-time notification test issue
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/upstream.yml
+      - scripts/check_upstream.py
+      - tests/test_upstream_updates.py
+permissions:
+  contents: read
+concurrency:
+  group: clashctl-upstream-notifications
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test update detection and notification deduplication
+        run: python3 -m unittest discover -s tests -p 'test_upstream_updates.py' -v
+      - name: Check upstreams and notify through GitHub Issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_NOTIFICATION: ${{ inputs.test_notification == true }}
+        run: |
+          args=()
+          if [[ "$TEST_NOTIFICATION" == true ]]; then
+            args+=(--test-notification)
+          fi
+          python3 scripts/check_upstream.py "${args[@]}"

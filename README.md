@@ -103,6 +103,33 @@ docker buildx build --load -t clashctl:test .
 IMAGE=clashctl:test python3 tests/integration.py
 ```
 
+## Upstream update notifications
+
+[Check upstream updates](.github/workflows/upstream.yml) runs daily at 09:23
+Asia/Shanghai (GitHub may delay scheduled runs). It checks the default-branch
+commit of clash-for-linux-install and the latest stable mihomo release against
+this repository's Dockerfile pins. Alpha releases are excluded.
+
+A new upstream revision creates a GitHub Issue with the pinned version, new
+version, and upstream comparison links. The same revision is reported once,
+including after its issue is closed. No change means no issue or notification.
+The workflow does not edit pins, publish images, or update running containers.
+
+To receive notifications, select **Watch → Custom → Issues** on this repository,
+and enable GitHub web/email notifications in your account settings. This uses
+GitHub's built-in notifications, not Feishu or a local scheduled task. For
+workflow failures, configure **Settings → Notifications → Actions** separately.
+
+The workflow uses the built-in `GITHUB_TOKEN`; no extra secret is required.
+Manual runs support an optional, clearly marked one-time notification test.
+GitHub can disable scheduled workflows in public repositories after 60 days
+without repository activity; re-enable the workflow from the Actions page.
+
+```bash
+python3 -m unittest discover -s tests -p 'test_upstream_updates.py' -v
+python3 scripts/check_upstream.py --repo creekxi2026/clashctl-docker --dry-run
+```
+
 ## Upstream and licenses
 
 - https://github.com/nelvko/clash-for-linux-install (MIT; included in image)
