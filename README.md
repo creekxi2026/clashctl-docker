@@ -34,6 +34,13 @@ can overwrite them. The dashboard is unavailable while `clashctl off` is active.
 For terminal selection, use `docker compose exec clashctl clashctl node use`
 (with a TTY, not `-T`).
 
+Before enabling the UI, set `UI_SECRET` in `.env` to a strong, unique value
+(at least 32 random characters; printable ASCII, no whitespace). Single-quote
+values containing `$` or `#` to preserve them literally. Keep `.env` private
+(mode 0600); environment values are visible to Docker administrators. Never
+paste secrets into chat, issues, screenshots or logs. Startup never prints them
+or embeds them in the dashboard HTML.
+
 Default Compose still publishes only the proxy; the controller listens on
 container loopback. To enable browser access, also download `compose.ui.yaml`:
 
@@ -49,19 +56,24 @@ to expose the proxy too. This is an explicit opt-in to LAN controller access;
 restrict the port with your NAS firewall. Never forward it to the Internet.
 
 Open `http://NAS_PRIVATE_IP:9090/ui/` (use your chosen host port). In the dashboard
-connection form, enter API URL `http://NAS_PRIVATE_IP:9090` and the secret from
-`/data/controller.secret`. **Browser localhost is your computer, not the NAS.**
+connection form, enter API URL `http://NAS_PRIVATE_IP:9090` and your configured
+`UI_SECRET`. Enter it once; the dashboard remembers the connection in your browser.
+It does not log in automatically. **Browser localhost is your computer, not the NAS.**
 Use matching HTTPS routes for both UI and API behind an HTTPS reverse proxy;
 HTTPS pages cannot generally call an HTTP API. LAN HTTP does not encrypt the
 secret or API traffic; use a trusted network or HTTPS/private tunnel.
 
-A secret is generated at first startup and persisted with mode 0600 in `/data`;
-an existing nonempty mixin secret is retained on upgrade. Retrieve it privately
-in your NAS container terminal or volume file manager, and enter it locally;
-do not paste it into chat, issues, screenshots or logs. Startup never prints it.
-To rotate, stop this service, replace `/data/controller.secret` with a strong
-nonempty secret owned by UID 1000 (mode 0600), then recreate. Empty or symlinked
-secret files fail startup rather than enabling unauthenticated access. Removing
+A nonempty `UI_SECRET` takes precedence over saved and old mixin secrets and is
+persisted atomically in `/data/controller.secret` with mode 0600. To rotate,
+change `UI_SECRET` and recreate with the same Compose files; a restart alone
+does not reload `.env`. Enter the new key in the dashboard's connection settings.
+Recreating with the same key retains it. Leaving `UI_SECRET` unset or empty keeps
+the saved key; on a fresh volume it preserves a nonempty mixin secret or generates
+a random key. Clearing `.env` does not rotate or remove a saved key. To avoid
+looking up a generated key, choose your own `UI_SECRET` before connecting.
+
+Empty, whitespace-only, symlinked or nonregular saved secret files fail startup,
+even with an explicit key; repair invalid storage before recreating. Removing
 the UI override and recreating restores container-loopback access without
 changing subscriptions or the saved secret. Always use the same Compose file
 selection for later pull/up commands.

@@ -8,15 +8,30 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class ComposeUITests(unittest.TestCase):
-    def config(self, ui=False, **settings):
+    def config(self, ui=False, env_file=None, **settings):
         env = {k: v for k, v in os.environ.items()
-               if k not in ('SUB_URL', 'BIND_IP', 'PROXY_PORT', 'UI_BIND_IP', 'UI_PORT', 'COMPOSE_FILE')}
+               if k not in ('SUB_URL', 'BIND_IP', 'PROXY_PORT', 'UI_BIND_IP', 'UI_PORT', 'UI_SECRET', 'COMPOSE_FILE')}
         env.update(settings)
-        args = ['docker', 'compose', '--env-file', str(ROOT / 'env.example'), '-f', str(ROOT / 'compose.yaml')]
+        args = ['docker', 'compose', '--env-file', str(env_file or ROOT / 'env.example'), '-f', str(ROOT / 'compose.yaml')]
         if ui:
             args += ['-f', str(ROOT / 'compose.ui.yaml')]
         args += ['config', '--format', 'json']
         return json.loads(subprocess.check_output(args, env=env, text=True))['services']['clashctl']
+
+    def test_explicit_secret_mapping_and_dotenv_precedence(self):
+        import tempfile
+        fixture = 'fixture-only-7d89e4c06a315bf291e836b7c94da250$literal#suffix'
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            env_file = Path(tmp) / '.env'
+            for content in ('', 'UI_SECRET=\n'):
+                env_file.write_text(content)
+                self.assertEqual(self.config(env_file=env_file)['environment']['UI_SECRET'], '')
+            env_file.write_text("UI_SECRET='" + fixture + "'\n")
+            for ui in (False, True):
+                # Compose escapes literal dollars when serializing reusable config.
+                resolved = self.config(ui=ui, env_file=env_file)['environment']['UI_SECRET']
+                self.assertEqual(resolved.replace('$$', '$'), fixture)
+                self.assertEqual(self.config(ui=ui, env_file=env_file, UI_SECRET='shell-fixture')['environment']['UI_SECRET'], 'shell-fixture')
 
     def test_controller_address_defaults_for_unset_and_empty(self):
         import ast

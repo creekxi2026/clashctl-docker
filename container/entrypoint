@@ -29,18 +29,45 @@ python3 - <<'PY'
 import os
 from pathlib import Path
 import secrets
+import stat
 import subprocess
+import tempfile
 path = Path('/data/controller.secret')
+explicit = os.environ.get('UI_SECRET', '')
+if explicit and any(c.isspace() or ord(c) < 33 or ord(c) > 126 for c in explicit):
+    raise SystemExit('UI_SECRET must contain only printable ASCII without whitespace')
+# Check existing storage even when rotating; never follow symlinks or open FIFOs.
 if path.is_symlink():
     raise SystemExit('controller.secret must not be a symlink')
-if not path.exists():
-    previous = subprocess.check_output(['/opt/clashctl/bin/yq', '.secret // ""',
-                                        '/data/mixin.yaml'], text=True).strip()
-    with path.open('x') as stream:
-        stream.write(previous or secrets.token_urlsafe(32))
-path.chmod(0o600)
-if not path.read_text().strip():
-    raise SystemExit('controller.secret must not be empty')
+saved = None
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+except FileNotFoundError:
+    pass
+else:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise SystemExit('controller.secret must be a regular file')
+    with os.fdopen(fd) as stream:
+        saved = stream.read().strip()
+        if not saved:
+            raise SystemExit('controller.secret must not be empty')
+        os.fchmod(stream.fileno(), 0o600)
+if explicit or saved is None:
+    previous = '' if explicit else subprocess.check_output([
+        '/opt/clashctl/bin/yq', '.secret // ""', '/data/mixin.yaml'], text=True).strip()
+    selected = explicit or previous or secrets.token_urlsafe(32)
+    # Atomic replacement keeps the old value intact if writing fails. mkstemp is 0600.
+    fd, temporary = tempfile.mkstemp(prefix='.controller.secret-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(selected)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 subprocess.run(['/opt/clashctl/bin/yq', '-i',
     '.external-controller = strenv(CONTROLLER_ADDR) | '
     '.secret = (load_str("/data/controller.secret") | trim) | '
@@ -51,6 +78,7 @@ subprocess.run(['/opt/clashctl/bin/yq', '-i',
     check=True)
 PY
 [ "$?" -eq 0 ] || fail 'Controller setup failed.'
+unset UI_SECRET
 source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
 # Bootstrap before supervisord starts; sub --use can merge without starting a daemon.
 service_start() { return 0; }
