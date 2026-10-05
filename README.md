@@ -32,7 +32,9 @@ rules and logs. It does **not** manage clashctl subscription metadata; keep usin
 are runtime-only unless persisted by mihomo; subsequent config merges/restarts
 can overwrite them. The dashboard is unavailable while `clashctl off` is active.
 For terminal selection, use `docker compose exec clashctl clashctl node use`
-(with a TTY, not `-T`).
+(with a TTY, not `-T`). For interactive calls, `clashctl` fills zero terminal
+rows/columns with 30/120; valid dimensions and noninteractive calls are unchanged.
+This handles NAS consoles that report `stty size` as `0 0`.
 
 Before enabling the UI, set `UI_SECRET` in `.env` to a strong, unique value
 (at least 32 random characters; printable ASCII, no whitespace). Single-quote

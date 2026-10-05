@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 umask 077
+# NAS terminals may report zero rows/columns; preserve valid sizes and piped calls.
+_fix_terminal_size() {
+    [ -t 0 ] || return 0
+    local size rows cols
+    size=$(stty size 2>/dev/null) || return 0
+    read -r rows cols <<< "$size"
+    [[ "$rows" =~ ^[0-9]+$ && "$cols" =~ ^[0-9]+$ ]] || return 0
+    [ "$rows" = 0 ] || [ "$cols" = 0 ] || return 0
+    [ "$rows" != 0 ] || rows=30
+    [ "$cols" != 0 ] || cols=120
+    stty rows "$rows" cols "$cols" 2>/dev/null || :
+}
+_fix_terminal_size
+unset -f _fix_terminal_size
 export CLASHCTL_HOME=/opt/clashctl
 source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
 # Keep an alias of upstream conversion before wrapping its working directory/lock.

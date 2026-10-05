@@ -97,6 +97,25 @@ try:
     assert proxies["now"] == "hop-b"
     proxy()
     check("noninteractive node selection, API readback and post-switch traffic")
+    # Own the inner PTY: docker exec -t can asynchronously resend host dimensions.
+    docker('cp', str(ROOT / 'pty_selector.py'), NAME + ':/data/pty_selector.py')
+    selector_probe = '''
+import sys
+sys.path.insert(0, '/data')
+from pty_selector import choose
+frame, dimensions = choose(['clashctl', 'node', 'use', 'PROXY'], b'hop-a', b'hop-a',
+                            rows=0, cols=0, controlling=True)
+assert dimensions == (30, 120), dimensions
+print('PASS: inner zero-sized PTY repaired and actual node selector displayed/search-selected')
+'''
+    docker('exec', '-e', 'TERM=xterm', NAME, 'python3', '-c', selector_probe)
+    proxies = json.loads(docker('exec', NAME, 'python3', '-c',
+        'import pathlib,urllib.request; r=urllib.request.Request("http://127.0.0.1:9090/proxies/PROXY", '
+        'headers={"Authorization":"Bearer "+pathlib.Path("/data/controller.secret").read_text().strip()}); '
+        'print(urllib.request.urlopen(r).read().decode())').stdout)
+    assert proxies['now'] == 'hop-a'
+    proxy()
+    check('zero-sized TTY repaired; actual node selector renders, searches and switches with API readback')
     docker("exec", FIXTURE, "curl", "-fsS", "http://127.0.0.1:18082/bump")
     cli("sub", "update", "main")
     assert value(".test-generation", "/data/runtime.yaml") == "2"
