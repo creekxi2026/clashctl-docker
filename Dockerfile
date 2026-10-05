@@ -6,7 +6,7 @@ COPY --from=core /root/.config/mihomo/ /etc/clashctl/
 ARG TARGETARCH
 LABEL org.opencontainers.image.source="https://github.com/creekxi2026/clashctl-docker"       org.opencontainers.image.description="Headless clashctl + mihomo; persistent subscriptions and noninteractive management"       org.opencontainers.image.licenses="GPL-3.0,MIT"       io.clashctl.upstream.revision="b2d4cbd6e4bed4ee59e1a4495f931f6e5d5498bc"
 USER root
-RUN apk add --no-cache bash curl wget coreutils findutils grep sed gawk       iproute2 procps util-linux supervisor libstdc++ libgcc ca-certificates     && addgroup -g 1000 clashctl && adduser -D -u 1000 -G clashctl clashctl
+RUN apk add --no-cache bash curl wget coreutils findutils grep sed gawk       iproute2 procps util-linux supervisor fzf libstdc++ libgcc ca-certificates     && addgroup -g 1000 clashctl && adduser -D -u 1000 -G clashctl clashctl
 RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) subarch=linux64; subsha=b9d6f969300d3c8398f9d970db7436274df0ff3e7c91d935d26bbd79fafc8488; yqsha=fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4 ;; \
@@ -56,12 +56,24 @@ p.write_text(s)
 for script in Path('/opt/clashctl/scripts').rglob('*.sh'):
     script.write_text(script.read_text().replace('/usr/bin/rm', '/bin/rm'))
 PY
+# Bundle an immutable dashboard; never download UI assets at container startup.
+ARG METACUBEXD_VERSION=1.273.1
+ARG METACUBEXD_SHA256=a178e00b67acabcda2dcef00afa90be6a7bb261e466a67dad58c8478d9553603
+RUN set -eux; \
+    curl -fSL --retry 3 --max-time 120 "https://github.com/MetaCubeX/metacubexd/releases/download/v${METACUBEXD_VERSION}/compressed-dist.tgz" -o /tmp/dashboard.tgz; \
+    printf '%s  %s\n' "$METACUBEXD_SHA256" /tmp/dashboard.tgz | sha256sum -c -; \
+    mkdir -p /opt/metacubexd; \
+    tar -xzf /tmp/dashboard.tgz -C /opt/metacubexd; \
+    test -s /opt/metacubexd/index.html; \
+    rm /tmp/dashboard.tgz
+COPY container/licenses/ /usr/share/licenses/clashctl-docker/
 COPY container/zz-container.sh /opt/clashctl/scripts/lib/zz-container.sh
 COPY container/default.yaml container/mixin.yaml /etc/clashctl/
 COPY container/supervisord.conf /etc/supervisord.conf
 COPY container/entrypoint container/clashctl container/update-subscriptions /usr/local/bin/
 RUN chmod 755 /usr/local/bin/entrypoint /usr/local/bin/clashctl /usr/local/bin/update-subscriptions     && /opt/clashctl/bin/yq --version && /mihomo -v
-ENV CLASHCTL_HOME=/opt/clashctl SUB_UPDATE_INTERVAL=86400
+# mihomo restricts external-ui paths outside its data directory.
+ENV CLASHCTL_HOME=/opt/clashctl SUB_UPDATE_INTERVAL=86400 SAFE_PATHS=/opt/metacubexd
 WORKDIR /data
 USER 1000:1000
 VOLUME ["/data"]

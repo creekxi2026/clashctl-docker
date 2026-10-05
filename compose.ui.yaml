@@ -1,0 +1,7 @@
+# Opt in with: docker compose -f compose.yaml -f compose.ui.yaml up -d
+services:
+  clashctl:
+    environment:
+      CONTROLLER_BIND: 0.0.0.0
+    ports:
+      - "${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-9090}:9090"

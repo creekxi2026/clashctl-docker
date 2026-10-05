@@ -11,7 +11,7 @@ case "${1:-help}" in
     status) service_status ;;
     upgrade|tun|ui|secret)
         printf '%s
-' 'This container supports sub/node/on/off/status/log/mixin. Upgrade by pulling a new image; TUN and dashboard are not included.' >&2
+' 'This container supports sub/node/on/off/status/log/mixin. Upgrade by pulling a new image; TUN is not included. Enable the bundled dashboard with compose.ui.yaml; its secret is stored in /data/controller.secret.' >&2
         exit 2 ;;
     *) clashctl "$@" ;;
 esac

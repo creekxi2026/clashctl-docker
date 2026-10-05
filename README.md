@@ -23,6 +23,49 @@ default. Do not publish this proxy to the Internet.
 Containers sharing its Compose network can use `http://clashctl:7890`.
 `localhost` inside another container is not this service.
 
+## Web dashboard (optional)
+
+The image includes **MetaCubeXD** and **fzf**. The dashboard controls mihomo:
+select nodes, run delay tests, change the active mode, and inspect connections,
+rules and logs. It does **not** manage clashctl subscription metadata; keep using
+`clashctl sub` for adding, selecting and refreshing subscriptions. API changes
+are runtime-only unless persisted by mihomo; subsequent config merges/restarts
+can overwrite them. The dashboard is unavailable while `clashctl off` is active.
+For terminal selection, use `docker compose exec clashctl clashctl node use`
+(with a TTY, not `-T`).
+
+Default Compose still publishes only the proxy; the controller listens on
+container loopback. To enable browser access, also download `compose.ui.yaml`:
+
+```bash
+docker compose -f compose.yaml -f compose.ui.yaml up -d
+```
+
+This publishes the authenticated controller and `/ui/` on host loopback port
+9090. On a NAS, set `UI_BIND_IP` in `.env` to the NAS's **private LAN IP** and
+optionally change `UI_PORT`, then recreate with both Compose files (or select
+both files in your NAS Compose UI). Leave `BIND_IP` unchanged if you do not want
+to expose the proxy too. This is an explicit opt-in to LAN controller access;
+restrict the port with your NAS firewall. Never forward it to the Internet.
+
+Open `http://NAS_PRIVATE_IP:9090/ui/` (use your chosen host port). In the dashboard
+connection form, enter API URL `http://NAS_PRIVATE_IP:9090` and the secret from
+`/data/controller.secret`. **Browser localhost is your computer, not the NAS.**
+Use matching HTTPS routes for both UI and API behind an HTTPS reverse proxy;
+HTTPS pages cannot generally call an HTTP API. LAN HTTP does not encrypt the
+secret or API traffic; use a trusted network or HTTPS/private tunnel.
+
+A secret is generated at first startup and persisted with mode 0600 in `/data`;
+an existing nonempty mixin secret is retained on upgrade. Retrieve it privately
+in your NAS container terminal or volume file manager, and enter it locally;
+do not paste it into chat, issues, screenshots or logs. Startup never prints it.
+To rotate, stop this service, replace `/data/controller.secret` with a strong
+nonempty secret owned by UID 1000 (mode 0600), then recreate. Empty or symlinked
+secret files fail startup rather than enabling unauthenticated access. Removing
+the UI override and recreating restores container-loopback access without
+changing subscriptions or the saved secret. Always use the same Compose file
+selection for later pull/up commands.
+
 ## Subscriptions
 
 The initial URL is imported as `main` only when there is no active subscription.
@@ -73,8 +116,9 @@ metadata when using `SUB_URL`, subscription metadata, and diagnostic logs.
   restarts. Proxy logs are rotated in `/data/mihomo.log`; `docker compose logs`
   shows supervisor/bootstrap state. Sensitive bootstrap errors stay in
   `/data/bootstrap.log`.
-- Controller is internal `127.0.0.1:9090`, not published. No GUI/dashboard,
-  TUN, privileged mode, host networking, or Docker socket mount is required.
+- Controller defaults to internal `127.0.0.1:9090`, not published, with a persisted
+  secret. Bundled UI assets are served by mihomo; no extra web server, TUN,
+  privileged mode, host networking, or Docker socket mount is required.
 - Keep the container listener settings in `mixin.yaml` unchanged. Configure
   host bindings through Compose. `upgrade`, `tun`, `ui`, `secret` commands are
   intentionally disabled; update by pulling and recreating the image.
@@ -85,6 +129,8 @@ metadata when using `SUB_URL`, subscription metadata, and diagnostic logs.
 - clashctl commit `b2d4cbd6e4bed4ee59e1a4495f931f6e5d5498bc`
 - yq v4.53.3
 - asdlokj1qpi233/subconverter v0.9.9
+- MetaCubeXD v1.273.1 (release archive pinned by SHA-256)
+- fzf (Alpine package)
 
 Downloaded source/binaries are SHA-256 checked. The image preserves upstream
 clashctl implementation; the small service adapter replaces host init-system
@@ -101,6 +147,8 @@ multi-platform index. No automatic scheduled rebuilds or paid runners.
 ```bash
 docker buildx build --load -t clashctl:test .
 IMAGE=clashctl:test python3 tests/integration.py
+IMAGE=clashctl:test python3 tests/dashboard.py
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 ## Upstream update notifications
@@ -134,6 +182,8 @@ python3 scripts/check_upstream.py --repo creekxi2026/clashctl-docker --dry-run
 
 - https://github.com/nelvko/clash-for-linux-install (MIT; included in image)
 - https://github.com/MetaCubeX/mihomo (GPL-3.0)
+- https://github.com/MetaCubeX/metacubexd (MIT)
+- https://github.com/junegunn/fzf (MIT)
 - https://github.com/mikefarah/yq (MIT)
 - https://github.com/asdlokj1qpi233/subconverter (GPL-3.0)
 

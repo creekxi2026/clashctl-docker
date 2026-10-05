@@ -5,6 +5,8 @@ services:
     environment:
       SUB_URL: ${SUB_URL:-}
       SUB_UPDATE_INTERVAL: ${SUB_UPDATE_INTERVAL:-86400}
+      # Only compose.ui.yaml opts into a container-wide controller listener.
+      CONTROLLER_BIND: 127.0.0.1
     ports:
       - "${BIND_IP:-127.0.0.1}:${PROXY_PORT:-7890}:7890"
     volumes:

@@ -90,7 +90,10 @@ try:
     check("HTTP and SOCKS5 traffic traverse the selected real upstream proxy")
     assert "PROXY" in cli("node", "ls").stdout
     cli("node", "use", "PROXY", "hop-b")
-    proxies = json.loads(docker("exec", NAME, "curl", "-fsS", "http://127.0.0.1:9090/proxies/PROXY").stdout)
+    proxies = json.loads(docker("exec", NAME, "python3", "-c",
+        'import pathlib,urllib.request; r=urllib.request.Request("http://127.0.0.1:9090/proxies/PROXY", '
+        'headers={"Authorization":"Bearer "+pathlib.Path("/data/controller.secret").read_text().strip()}); '
+        'print(urllib.request.urlopen(r).read().decode())').stdout)
     assert proxies["now"] == "hop-b"
     proxy()
     check("noninteractive node selection, API readback and post-switch traffic")

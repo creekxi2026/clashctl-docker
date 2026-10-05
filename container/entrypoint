@@ -20,6 +20,37 @@ done
 cp -R /opt/subconverter-template/. /data/subconverter/ || exit 1
 [ -e /data/subconverter/pref.yml ] || cp /data/subconverter/pref.example.yml /data/subconverter/pref.yml || exit 1
 /opt/clashctl/bin/yq -i '.server.listen = "127.0.0.1" | .server.port = 25500 | .rulesets.enabled = false | .emojis.add_emoji = false' /data/subconverter/pref.yml || exit 1
+# Controller settings are container-owned, including on existing data volumes.
+case "${CONTROLLER_BIND:-127.0.0.1}" in
+    127.0.0.1|0.0.0.0) ;;
+    *) fail 'CONTROLLER_BIND must be 127.0.0.1 or 0.0.0.0.' ;;
+esac
+python3 - <<'PY'
+import os
+from pathlib import Path
+import secrets
+import subprocess
+path = Path('/data/controller.secret')
+if path.is_symlink():
+    raise SystemExit('controller.secret must not be a symlink')
+if not path.exists():
+    previous = subprocess.check_output(['/opt/clashctl/bin/yq', '.secret // ""',
+                                        '/data/mixin.yaml'], text=True).strip()
+    with path.open('x') as stream:
+        stream.write(previous or secrets.token_urlsafe(32))
+path.chmod(0o600)
+if not path.read_text().strip():
+    raise SystemExit('controller.secret must not be empty')
+subprocess.run(['/opt/clashctl/bin/yq', '-i',
+    '.external-controller = strenv(CONTROLLER_ADDR) | '
+    '.secret = (load_str("/data/controller.secret") | trim) | '
+    '.external-ui = "/opt/metacubexd" | .external-ui-url = "" | '
+    '.external-controller-tls = "" | .external-controller-unix = "" | '
+    '.external-controller-pipe = ""', '/data/mixin.yaml'],
+    env=dict(os.environ, CONTROLLER_ADDR=(os.environ.get('CONTROLLER_BIND') or '127.0.0.1') + ':9090'),
+    check=True)
+PY
+[ "$?" -eq 0 ] || fail 'Controller setup failed.'
 source "$CLASHCTL_HOME/scripts/cmd/clashctl.sh"
 # Bootstrap before supervisord starts; sub --use can merge without starting a daemon.
 service_start() { return 0; }

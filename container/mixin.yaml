@@ -11,7 +11,8 @@ secret: ''
 external-controller-tls: ''
 external-controller-unix: ''
 external-controller-pipe: ''
-external-ui: ''
+external-ui: /opt/metacubexd
+external-ui-url: ''
 tun:
   enable: false
 dns:
