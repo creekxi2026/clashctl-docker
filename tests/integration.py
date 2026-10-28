@@ -54,11 +54,11 @@ def proxy(mode="http"):
     assert p.stdout == "proxy-hop-ok", p.stdout
 
 
-def start():
+def start(image=IMAGE):
     docker("run", "-d", "--name", NAME, "--network", NETWORK,
            "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
            "-e", "SUB_URL=http://fixture:18082/sub", "-e", "SUB_UPDATE_INTERVAL=0",
-           "-v", VOLUME + ":/data", "-p", "127.0.0.1::7890", IMAGE)
+           "-v", VOLUME + ":/data", "-p", "127.0.0.1::7890", image)
     wait_ready()
 
 
@@ -79,7 +79,19 @@ try:
         time.sleep(0.25)
     else:
         raise AssertionError("fixture did not start")
-    start()
+    if os.environ.get("PREVIOUS_IMAGE"):
+        start(os.environ["PREVIOUS_IMAGE"])
+        proxy()
+        old_secret = docker("exec", NAME, "cat", "/data/controller.secret").stdout
+        old_profile = value(".profiles[0].path")
+        docker("stop", "--time", "15", NAME)
+        docker("rm", NAME)
+        start()
+        assert docker("exec", NAME, "cat", "/data/controller.secret").stdout == old_secret
+        assert value(".profiles[0].path") == old_profile
+        check("upgrade preserves old subscription paths, active profile and controller secret")
+    else:
+        start()
     assert docker("exec", NAME, "id", "-u").stdout.strip() == "1000"
     assert value(".use") == "main"
     assert value(".profiles | length") == "1"
@@ -161,6 +173,7 @@ print('PASS: inner zero-sized PTY repaired and actual node selector displayed/se
     api = docker("exec", NAME, "ss", "-lnt").stdout
     assert "127.0.0.1:9090" in api and "0.0.0.0:9090" not in api
     assert cli("tun", ok=False).returncode == 2
+    assert cli("update", ok=False).returncode == 2
     check("internal-only controller and no TUN privileges")
     print("ALL INTEGRATION CHECKS PASSED", flush=True)
 except Exception:

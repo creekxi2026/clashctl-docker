@@ -22,3 +22,14 @@ _container_convert() {
     BIN_SUBCONVERTER_PORT=25500
     (cd /data/subconverter && _download_convert_config_upstream "$dest" "$url")
 }
+
+# Preserve the shipped reject-only bootstrap config on existing and fresh data.
+# All selected subscriptions still go through upstream's strict validation.
+eval "$(declare -f _require_base_config | sed '1s/_require_base_config/_require_base_config_upstream/')"
+_require_base_config() {
+    if [ -z "$(_sub_current)" ] && cmp -s "$CLASH_CONFIG_BASE" /etc/clashctl/default.yaml; then
+        _valid_config "$CLASH_CONFIG_BASE"
+    else
+        _require_base_config_upstream
+    fi
+}

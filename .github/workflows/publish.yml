@@ -47,7 +47,9 @@ jobs:
       - name: Real container integration tests
         env:
           IMAGE: clashctl:test
+          PREVIOUS_IMAGE: ghcr.io/creekxi2026/clashctl-docker@sha256:a93527a21b1858d27a381cdd94698c26333e983bcdc12d885660591a08672827
         run: |
+          docker pull "$PREVIOUS_IMAGE"
           python3 tests/integration.py
           python3 tests/dashboard.py
       - uses: docker/login-action@v4

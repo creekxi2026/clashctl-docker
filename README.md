@@ -134,14 +134,15 @@ metadata when using `SUB_URL`, subscription metadata, and diagnostic logs.
   secret. Bundled UI assets are served by mihomo; no extra web server, TUN,
   privileged mode, host networking, or Docker socket mount is required.
 - Keep the container listener settings in `mixin.yaml` unchanged. Configure
-  host bindings through Compose. `upgrade`, `tun`, `ui`, `secret` commands are
+  host bindings through Compose. `update`, `upgrade`, `tun`, `ui`, `secret` commands are
   intentionally disabled; update by pulling and recreating the image.
 
 ## Pinned components and build
 
-- mihomo v1.19.32, official multi-platform image pinned by digest in Dockerfile
-- clashctl commit `b2d4cbd6e4bed4ee59e1a4495f931f6e5d5498bc`
-- yq v4.53.3
+- Alpine 3.24.3, pinned by multi-platform digest
+- mihomo v1.19.33, official multi-platform image pinned by digest in Dockerfile
+- clashctl commit `4ec42a9f33108a16281bdad4eace7ccce94ae3b2`
+- yq v4.54.1
 - asdlokj1qpi233/subconverter v0.9.9
 - MetaCubeXD v1.273.1 (release archive pinned by SHA-256)
 - fzf (Alpine package)
@@ -149,6 +150,8 @@ metadata when using `SUB_URL`, subscription metadata, and diagnostic logs.
 Downloaded source/binaries are SHA-256 checked. The image preserves upstream
 clashctl implementation; the small service adapter replaces host init-system
 calls and wraps conversion with a working directory and lock.
+Both upstream data paths resolve to the existing `/data` volume, so updating
+preserves subscription paths and the controller secret without moving files.
 
 GitHub Actions builds on native amd64 and arm64 runners. Integration tests
 exercise actual HTTP and SOCKS proxy traffic through a controlled local upstream,
@@ -164,6 +167,10 @@ IMAGE=clashctl:test python3 tests/integration.py
 IMAGE=clashctl:test python3 tests/dashboard.py
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
+
+Set `PREVIOUS_IMAGE` to a locally available earlier image to also exercise
+upgrading its persisted subscriptions and controller secret; CI uses the pinned
+October 5 image for this regression on both architectures.
 
 ## Upstream update notifications
 
